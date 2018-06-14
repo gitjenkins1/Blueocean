@@ -1,10 +1,19 @@
 package io.jenkins.blueocean.rest.impl.pipeline;
 
+import com.google.common.collect.ImmutableMap;
 import hudson.model.Action;
+import hudson.model.Queue;
+import hudson.util.HttpResponses;
+import io.jenkins.blueocean.commons.JsonConverter;
+import io.jenkins.blueocean.commons.ServiceException;
 import io.jenkins.blueocean.rest.Reachable;
+import io.jenkins.blueocean.rest.factory.BluePipelineFactory;
+import io.jenkins.blueocean.rest.factory.organization.OrganizationFactory;
 import io.jenkins.blueocean.rest.hal.Link;
 import io.jenkins.blueocean.rest.model.BlueActionProxy;
 import io.jenkins.blueocean.rest.model.BlueInputStep;
+import io.jenkins.blueocean.rest.model.BlueOrganization;
+import io.jenkins.blueocean.rest.model.BluePipeline;
 import io.jenkins.blueocean.rest.model.BluePipelineNode;
 import io.jenkins.blueocean.rest.model.BluePipelineStep;
 import io.jenkins.blueocean.rest.model.BluePipelineStepContainer;
@@ -12,13 +21,24 @@ import io.jenkins.blueocean.rest.model.BlueRun;
 import io.jenkins.blueocean.service.embedded.rest.AbstractRunImpl;
 import io.jenkins.blueocean.service.embedded.rest.ActionProxiesImpl;
 import io.jenkins.blueocean.listeners.NodeDownstreamBuildAction;
+import io.jenkins.blueocean.service.embedded.rest.QueueItemImpl;
+import net.sf.json.JSONObject;
+import org.apache.commons.io.IOUtils;
 import org.jenkinsci.plugins.workflow.actions.LogAction;
 import org.jenkinsci.plugins.workflow.graph.FlowNode;
+import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
+import org.jenkinsci.plugins.pipeline.modeldefinition.actions.RestartDeclarativePipelineAction;
 import org.kohsuke.stapler.HttpResponse;
 import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerResponse;
 import org.kohsuke.stapler.export.Exported;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -32,6 +52,7 @@ import java.util.List;
  * @see FlowNode
  */
 public class PipelineNodeImpl extends BluePipelineNode {
+    private static final Logger LOGGER = LoggerFactory.getLogger( PipelineNodeImpl.class );
     private final FlowNodeWrapper node;
     private final List<Edge> edges;
     private final Long durationInMillis;
@@ -159,7 +180,62 @@ public class PipelineNodeImpl extends BluePipelineNode {
 
     @Override
     public HttpResponse submitInputStep(StaplerRequest request) {
+        try
+        {
+            JSONObject body = JSONObject.fromObject( IOUtils.toString( request.getReader() ) );
+            boolean restart = body.getBoolean( "restart" );
+            if ( restart )
+            {
+                LOGGER.debug( "submitInputStep, restart: {}", restart );
+                RestartDeclarativePipelineAction restartDeclarativePipelineAction =
+                    this.run.getAction( RestartDeclarativePipelineAction.class );
+
+                if ( restartDeclarativePipelineAction != null )
+                {
+                    List<String> restartableStages = restartDeclarativePipelineAction.getRestartableStages();
+                    if ( restartableStages != null )
+                    {
+                        String stageName = this.getDisplayName();
+                        if ( restartableStages.contains( stageName ) )
+                        {
+                            LOGGER.debug( "we can restart stage {}, id: {}", stageName, this.getId() );
+                            Queue.Item item = restartDeclarativePipelineAction.run( stageName );
+
+                            BluePipeline bluePipeline = BluePipelineFactory.getPipelineInstance( this.run.getParent(), this.parent );
+
+                            QueueItemImpl queueItem = new QueueItemImpl( bluePipeline.getOrganization(), item,
+                                                                         bluePipeline, findExpectedBuildNumber( item ) );
+
+                            return ( req, rsp, node1 ) -> {
+                                    rsp.setStatus( HttpServletResponse.SC_OK);
+                                    // this generate Infinite recursion (StackOverflowError)
+                                    // (through reference chain: hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                                    // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                                    // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                                    // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                                    //rsp.getOutputStream().print(JsonConverter.toJson(queueItem.toRun()));
+                                };
+                        }
+                    }
+                }
+            }
+            // ISE cant happen if stage not restartable or anything else :-)
+        } catch ( IllegalStateException | IOException e) {
+            throw new ServiceException.UnexpectedErrorException( e.getMessage());
+        }
         return null;
+    }
+
+    private int findExpectedBuildNumber(Queue.Item item) {
+        try
+        {
+            return  ( (WorkflowJob) item.task ).getLastBuild().number + 1;
+        }
+        catch ( Exception e )
+        {
+            LOGGER.warn( "fail to find expected build number: " + e.getMessage(), e );
+        }
+        return 1;
     }
 
     public static class EdgeImpl extends Edge {
