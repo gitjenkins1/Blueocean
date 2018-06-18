@@ -1,18 +1,15 @@
 package io.jenkins.blueocean.rest.impl.pipeline;
 
-import com.google.common.collect.ImmutableMap;
 import hudson.model.Action;
 import hudson.model.Queue;
-import hudson.util.HttpResponses;
 import io.jenkins.blueocean.commons.JsonConverter;
 import io.jenkins.blueocean.commons.ServiceException;
+import io.jenkins.blueocean.listeners.NodeDownstreamBuildAction;
 import io.jenkins.blueocean.rest.Reachable;
 import io.jenkins.blueocean.rest.factory.BluePipelineFactory;
-import io.jenkins.blueocean.rest.factory.organization.OrganizationFactory;
 import io.jenkins.blueocean.rest.hal.Link;
 import io.jenkins.blueocean.rest.model.BlueActionProxy;
 import io.jenkins.blueocean.rest.model.BlueInputStep;
-import io.jenkins.blueocean.rest.model.BlueOrganization;
 import io.jenkins.blueocean.rest.model.BluePipeline;
 import io.jenkins.blueocean.rest.model.BluePipelineNode;
 import io.jenkins.blueocean.rest.model.BluePipelineStep;
@@ -20,23 +17,20 @@ import io.jenkins.blueocean.rest.model.BluePipelineStepContainer;
 import io.jenkins.blueocean.rest.model.BlueRun;
 import io.jenkins.blueocean.service.embedded.rest.AbstractRunImpl;
 import io.jenkins.blueocean.service.embedded.rest.ActionProxiesImpl;
-import io.jenkins.blueocean.listeners.NodeDownstreamBuildAction;
 import io.jenkins.blueocean.service.embedded.rest.QueueItemImpl;
 import net.sf.json.JSONObject;
 import org.apache.commons.io.IOUtils;
+import org.jenkinsci.plugins.pipeline.modeldefinition.actions.RestartDeclarativePipelineAction;
 import org.jenkinsci.plugins.workflow.actions.LogAction;
 import org.jenkinsci.plugins.workflow.graph.FlowNode;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
-import org.jenkinsci.plugins.pipeline.modeldefinition.actions.RestartDeclarativePipelineAction;
 import org.kohsuke.stapler.HttpResponse;
 import org.kohsuke.stapler.StaplerRequest;
-import org.kohsuke.stapler.StaplerResponse;
 import org.kohsuke.stapler.export.Exported;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -174,6 +168,22 @@ public class PipelineNodeImpl extends BluePipelineNode {
     }
 
     @Override
+    public boolean isRestartable()
+    {
+        RestartDeclarativePipelineAction restartDeclarativePipelineAction =
+            this.run.getAction( RestartDeclarativePipelineAction.class );
+        if ( restartDeclarativePipelineAction != null )
+        {
+            List<String> restartableStages = restartDeclarativePipelineAction.getRestartableStages();
+            if ( restartableStages != null )
+            {
+                return restartableStages.contains( this.getDisplayName() );
+            }
+        }
+        return false;
+    }
+
+    @Override
     public BlueInputStep getInputStep() {
         return null;
     }
@@ -184,40 +194,30 @@ public class PipelineNodeImpl extends BluePipelineNode {
         {
             JSONObject body = JSONObject.fromObject( IOUtils.toString( request.getReader() ) );
             boolean restart = body.getBoolean( "restart" );
-            if ( restart )
+            if ( restart && isRestartable() )
             {
-                LOGGER.debug( "submitInputStep, restart: {}", restart );
+                LOGGER.debug( "submitInputStep, restart: {}, step: {}", restart, this.getDisplayName() );
+
                 RestartDeclarativePipelineAction restartDeclarativePipelineAction =
                     this.run.getAction( RestartDeclarativePipelineAction.class );
 
-                if ( restartDeclarativePipelineAction != null )
-                {
-                    List<String> restartableStages = restartDeclarativePipelineAction.getRestartableStages();
-                    if ( restartableStages != null )
-                    {
-                        String stageName = this.getDisplayName();
-                        if ( restartableStages.contains( stageName ) )
-                        {
-                            LOGGER.debug( "we can restart stage {}, id: {}", stageName, this.getId() );
-                            Queue.Item item = restartDeclarativePipelineAction.run( stageName );
+                Queue.Item item = restartDeclarativePipelineAction.run( this.getDisplayName() );
 
-                            BluePipeline bluePipeline = BluePipelineFactory.getPipelineInstance( this.run.getParent(), this.parent );
+                BluePipeline bluePipeline = BluePipelineFactory.getPipelineInstance( this.run.getParent(), this.parent );
 
-                            QueueItemImpl queueItem = new QueueItemImpl( bluePipeline.getOrganization(), item,
-                                                                         bluePipeline, findExpectedBuildNumber( item ) );
+                QueueItemImpl queueItem = new QueueItemImpl( bluePipeline.getOrganization(), item,
+                                                             bluePipeline, findExpectedBuildNumber( item ) );
 
-                            return ( req, rsp, node1 ) -> {
-                                    rsp.setStatus( HttpServletResponse.SC_OK);
-                                    // this generate Infinite recursion (StackOverflowError)
-                                    // (through reference chain: hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                                    // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                                    // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                                    // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                                    //rsp.getOutputStream().print(JsonConverter.toJson(queueItem.toRun()));
-                                };
-                        }
-                    }
-                }
+                return ( req, rsp, node1 ) -> {
+                        rsp.setStatus( HttpServletResponse.SC_OK);
+                        // this generate Infinite recursion (StackOverflowError)
+                        // (through reference chain: hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                        // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                        // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                        // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
+                        //rsp.getOutputStream().print( JsonConverter.toJson(queueItem));
+                    };
+
             }
             // ISE cant happen if stage not restartable or anything else :-)
         } catch ( IllegalStateException | IOException e) {
