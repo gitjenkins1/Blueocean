@@ -1,6 +1,8 @@
 package io.jenkins.blueocean.rest.impl.pipeline;
 
+import com.mashape.unirest.http.Unirest;
 import hudson.model.Label;
+import io.jenkins.blueocean.service.embedded.rest.QueueItemImpl;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.junit.Assert;
@@ -12,6 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class RestartStageTest extends PipelineBaseTest
@@ -29,9 +32,9 @@ public class RestartStageTest extends PipelineBaseTest
         WorkflowRun r = p.scheduleBuild2( 0).waitForStart();
         j.waitForCompletion( r );
 
+        // Ensure we find stage with restartable flag
         List<Map> resp = get( "/organizations/jenkins/pipelines/" + p.getName() + "/runs/1/nodes/", List.class);
         assertEquals(2, resp.size());
-        System.out.println( resp );
 
         Optional<Map> optionalMap = resp.stream()
             .filter( map -> map.get( "displayName" ).equals( "Stage test" ) )
@@ -41,22 +44,25 @@ public class RestartStageTest extends PipelineBaseTest
         Map res = optionalMap.get();
         assertEquals( true, res.get( "restartable" ) );
 
+        // restart the stage
         Map restartMap = new HashMap( 1 );
         restartMap.put( "restart", true );
         Map restartResult = post( "/organizations/jenkins/pipelines/" + p.getName()
                                       + "/runs/1/nodes/" + res.get( "id" ) + "/",
                                   restartMap);
 
-        resp = get( "/organizations/jenkins/pipelines/" + p.getName() + "/runs/2/nodes/", List.class);
+        assertEquals( QueueItemImpl.class.getName(), restartResult.get( "_class" ) );
+        int expectedBuildNumber = (Integer) restartResult.get( "expectedBuildNumber" );
+        assertEquals( 2, restartResult.get( "expectedBuildNumber" ));
+        assertNotNull( restartResult.get( "queuedTime" ) );
+
+
+        resp = get( "/organizations/jenkins/pipelines/" + p.getName() + "/runs/"+expectedBuildNumber+"/nodes/", List.class);
         assertEquals(2, resp.size());
 
         optionalMap = resp.stream()
             .filter( map -> map.get( "displayName" ).equals( "Stage test" ) )
             .findFirst();
         assertTrue(optionalMap.isPresent());
-
-        res = optionalMap.get();
-
-
     }
 }

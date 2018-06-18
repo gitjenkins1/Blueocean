@@ -68,6 +68,7 @@ public class JsonConverter{
         mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        mapper.configure( SerializationFeature.FAIL_ON_SELF_REFERENCES, false );
         return mapper;
     }
 }

@@ -4,6 +4,7 @@ import hudson.model.Action;
 import hudson.model.Queue;
 import io.jenkins.blueocean.commons.JsonConverter;
 import io.jenkins.blueocean.commons.ServiceException;
+import io.jenkins.blueocean.commons.stapler.Export;
 import io.jenkins.blueocean.listeners.NodeDownstreamBuildAction;
 import io.jenkins.blueocean.rest.Reachable;
 import io.jenkins.blueocean.rest.factory.BluePipelineFactory;
@@ -215,7 +216,7 @@ public class PipelineNodeImpl extends BluePipelineNode {
                         // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
                         // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
                         // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                        //rsp.getOutputStream().print( JsonConverter.toJson(queueItem));
+                        rsp.getOutputStream().print( Export.toJson( queueItem));
                     };
 
             }
@@ -229,7 +230,7 @@ public class PipelineNodeImpl extends BluePipelineNode {
     private int findExpectedBuildNumber(Queue.Item item) {
         try
         {
-            return  ( (WorkflowJob) item.task ).getLastBuild().number + 1;
+            return  ((WorkflowJob) item.task).getLastBuild().number;
         }
         catch ( Exception e )
         {
