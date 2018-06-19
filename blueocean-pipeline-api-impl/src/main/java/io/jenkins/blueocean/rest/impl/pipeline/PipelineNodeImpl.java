@@ -211,11 +211,6 @@ public class PipelineNodeImpl extends BluePipelineNode {
 
                 return ( req, rsp, node1 ) -> {
                         rsp.setStatus( HttpServletResponse.SC_OK);
-                        // this generate Infinite recursion (StackOverflowError)
-                        // (through reference chain: hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                        // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                        // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
-                        // ->hudson.model.Api["bean"]->hudson.plugins.git.util.BuildData["api"]
                         rsp.getOutputStream().print( Export.toJson( queueItem));
                     };
 
