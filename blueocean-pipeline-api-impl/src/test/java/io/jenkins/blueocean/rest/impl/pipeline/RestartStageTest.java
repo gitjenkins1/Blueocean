@@ -1,24 +1,24 @@
 package io.jenkins.blueocean.rest.impl.pipeline;
 
-import com.mashape.unirest.http.Unirest;
 import hudson.model.Label;
 import io.jenkins.blueocean.service.embedded.rest.QueueItemImpl;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class RestartStageTest extends PipelineBaseTest
 {
+
     @Test
     public void restart_stage() throws Exception {
         WorkflowJob p = createWorkflowJobWithJenkinsfile( getClass(), "restartStage.jenkinsfile");
@@ -44,6 +44,8 @@ public class RestartStageTest extends PipelineBaseTest
         Map res = optionalMap.get();
         assertEquals( true, res.get( "restartable" ) );
 
+        LOGGER.info( "buildNumber: {}", r.getNumber() );
+
         // restart the stage
         Map restartMap = new HashMap( 1 );
         restartMap.put( "restart", true );
@@ -53,7 +55,7 @@ public class RestartStageTest extends PipelineBaseTest
 
         assertEquals( QueueItemImpl.class.getName(), restartResult.get( "_class" ) );
         int expectedBuildNumber = (Integer) restartResult.get( "expectedBuildNumber" );
-        assertEquals( 2, restartResult.get( "expectedBuildNumber" ));
+        assertEquals( r.getNumber() + 1, restartResult.get( "expectedBuildNumber" ));
         assertNotNull( restartResult.get( "queuedTime" ) );
 
 
