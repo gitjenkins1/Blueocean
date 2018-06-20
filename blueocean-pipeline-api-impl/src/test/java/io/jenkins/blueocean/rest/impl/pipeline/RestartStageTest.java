@@ -55,9 +55,10 @@ public class RestartStageTest extends PipelineBaseTest
 
         assertEquals( QueueItemImpl.class.getName(), restartResult.get( "_class" ) );
         int expectedBuildNumber = (Integer) restartResult.get( "expectedBuildNumber" );
-        assertEquals( r.getNumber() + 1, restartResult.get( "expectedBuildNumber" ));
-        assertNotNull( restartResult.get( "queuedTime" ) );
 
+        // depending on build still in queue or not when guessing the build number
+        assertTrue(  (Integer)( restartResult.get( "expectedBuildNumber" )) >= r.getNumber());
+        assertNotNull( restartResult.get( "queuedTime" ) );
 
         resp = get( "/organizations/jenkins/pipelines/" + p.getName() + "/runs/"+expectedBuildNumber+"/nodes/", List.class);
         assertEquals(2, resp.size());

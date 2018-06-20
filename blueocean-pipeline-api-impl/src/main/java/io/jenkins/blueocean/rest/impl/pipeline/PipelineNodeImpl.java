@@ -203,11 +203,12 @@ public class PipelineNodeImpl extends BluePipelineNode {
                     this.run.getAction( RestartDeclarativePipelineAction.class );
 
                 Queue.Item item = restartDeclarativePipelineAction.run( this.getDisplayName() );
+                int expectedBuildNumber = findExpectedBuildNumber( item );
 
                 BluePipeline bluePipeline = BluePipelineFactory.getPipelineInstance( this.run.getParent(), this.parent );
 
                 QueueItemImpl queueItem = new QueueItemImpl( bluePipeline.getOrganization(), item,
-                                                             bluePipeline, findExpectedBuildNumber( item ) );
+                                                             bluePipeline, expectedBuildNumber);
 
                 return ( req, rsp, node1 ) -> {
                         rsp.setStatus( HttpServletResponse.SC_OK);
@@ -225,7 +226,9 @@ public class PipelineNodeImpl extends BluePipelineNode {
     private int findExpectedBuildNumber(Queue.Item item) {
         try
         {
-            return  ((WorkflowJob) item.task).getLastBuild().number;
+            int number = ((WorkflowJob) item.task).getNextBuildNumber();
+            LOGGER.debug( "findExpectedBuildNumber: {}", number );
+            return number > 0 ? number - 1:1;
         }
         catch ( Exception e )
         {
