@@ -178,7 +178,8 @@ public class PipelineNodeImpl extends BluePipelineNode {
             List<String> restartableStages = restartDeclarativePipelineAction.getRestartableStages();
             if ( restartableStages != null )
             {
-                return restartableStages.contains( this.getDisplayName() );
+                return restartableStages.contains(this.getDisplayName())
+                    && this.getStateObj() == BlueRun.BlueRunState.FINISHED;
             }
         }
         return false;
