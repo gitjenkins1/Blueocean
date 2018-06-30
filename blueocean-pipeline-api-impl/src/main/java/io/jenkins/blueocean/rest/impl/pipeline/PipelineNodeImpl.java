@@ -204,14 +204,21 @@ public class PipelineNodeImpl extends BluePipelineNode {
 
                 RestartDeclarativePipelineAction restartDeclarativePipelineAction =
                     this.run.getAction( RestartDeclarativePipelineAction.class );
-                BluePipeline bluePipeline = BluePipelineFactory.getPipelineInstance( this.run.getParent(), this.parent );
                 Queue.Item item = restartDeclarativePipelineAction.run( this.getDisplayName() );
+                BluePipeline bluePipeline = BluePipelineFactory.getPipelineInstance( this.run.getParent(), this.parent );
                 BlueQueueItem queueItem = QueueUtil.getQueuedItem( bluePipeline.getOrganization(), item, run.getParent());
+                WorkflowRun replayedRun = QueueUtil.getRun(run.getParent(), item.getId());
 
                 if (queueItem != null) { // If the item is still queued
                     return ( req, rsp, node1 ) -> {
-                        rsp.setStatus( HttpServletResponse.SC_OK);
-                        rsp.getOutputStream().print( Export.toJson( queueItem.toRun()));
+                        rsp.setStatus( HttpServletResponse.SC_OK );
+                        rsp.getOutputStream().print( Export.toJson( queueItem.toRun() ) );
+                    };
+                }
+                else if (replayedRun != null) {
+                    return ( req, rsp, node1 ) -> {
+                        rsp.setStatus( HttpServletResponse.SC_OK );
+                        rsp.getOutputStream().print( Export.toJson( new PipelineRunImpl(replayedRun, parent, bluePipeline.getOrganization()) ) );
                     };
                 } else { // For some reason could not be added to the queue
                     throw new ServiceException.UnexpectedErrorException("Run was not added to queue.");
