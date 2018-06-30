@@ -2,6 +2,7 @@ package io.jenkins.blueocean.rest.impl.pipeline;
 
 import hudson.model.Label;
 import io.jenkins.blueocean.service.embedded.rest.QueueItemImpl;
+import io.jenkins.blueocean.service.embedded.rest.QueuedBlueRun;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.junit.Assert;
@@ -53,19 +54,10 @@ public class RestartStageTest extends PipelineBaseTest
                                       + "/runs/1/nodes/" + res.get( "id" ) + "/",
                                   restartMap);
 
-        assertEquals( QueueItemImpl.class.getName(), restartResult.get( "_class" ) );
-        int expectedBuildNumber = (Integer) restartResult.get( "expectedBuildNumber" );
+        assertEquals( QueuedBlueRun.class.getName(), restartResult.get( "_class" ) );
+        int id = Integer.parseInt((String)restartResult.get( "id" ));
 
         // depending on build still in queue or not when guessing the build number
-        assertTrue(  (Integer)( restartResult.get( "expectedBuildNumber" )) >= r.getNumber());
-        assertNotNull( restartResult.get( "queuedTime" ) );
-
-        resp = get( "/organizations/jenkins/pipelines/" + p.getName() + "/runs/"+expectedBuildNumber+"/nodes/", List.class);
-        assertEquals(2, resp.size());
-
-        optionalMap = resp.stream()
-            .filter( map -> map.get( "displayName" ).equals( "Stage test" ) )
-            .findFirst();
-        assertTrue(optionalMap.isPresent());
+        assertTrue(  id >= r.getNumber());
     }
 }

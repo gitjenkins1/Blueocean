@@ -15,10 +15,12 @@ import io.jenkins.blueocean.rest.model.BluePipeline;
 import io.jenkins.blueocean.rest.model.BluePipelineNode;
 import io.jenkins.blueocean.rest.model.BluePipelineStep;
 import io.jenkins.blueocean.rest.model.BluePipelineStepContainer;
+import io.jenkins.blueocean.rest.model.BlueQueueItem;
 import io.jenkins.blueocean.rest.model.BlueRun;
 import io.jenkins.blueocean.service.embedded.rest.AbstractRunImpl;
 import io.jenkins.blueocean.service.embedded.rest.ActionProxiesImpl;
 import io.jenkins.blueocean.service.embedded.rest.QueueItemImpl;
+import io.jenkins.blueocean.service.embedded.rest.QueueUtil;
 import net.sf.json.JSONObject;
 import org.apache.commons.io.IOUtils;
 import org.jenkinsci.plugins.pipeline.modeldefinition.actions.RestartDeclarativePipelineAction;
@@ -202,20 +204,18 @@ public class PipelineNodeImpl extends BluePipelineNode {
 
                 RestartDeclarativePipelineAction restartDeclarativePipelineAction =
                     this.run.getAction( RestartDeclarativePipelineAction.class );
-
-                Queue.Item item = restartDeclarativePipelineAction.run( this.getDisplayName() );
-                int expectedBuildNumber = findExpectedBuildNumber( item );
-
                 BluePipeline bluePipeline = BluePipelineFactory.getPipelineInstance( this.run.getParent(), this.parent );
+                Queue.Item item = restartDeclarativePipelineAction.run( this.getDisplayName() );
+                BlueQueueItem queueItem = QueueUtil.getQueuedItem( bluePipeline.getOrganization(), item, run.getParent());
 
-                QueueItemImpl queueItem = new QueueItemImpl( bluePipeline.getOrganization(), item,
-                                                             bluePipeline, expectedBuildNumber);
-
-                return ( req, rsp, node1 ) -> {
+                if (queueItem != null) { // If the item is still queued
+                    return ( req, rsp, node1 ) -> {
                         rsp.setStatus( HttpServletResponse.SC_OK);
-                        rsp.getOutputStream().print( Export.toJson( queueItem));
+                        rsp.getOutputStream().print( Export.toJson( queueItem.toRun()));
                     };
-
+                } else { // For some reason could not be added to the queue
+                    throw new ServiceException.UnexpectedErrorException("Run was not added to queue.");
+                }
             }
             // ISE cant happen if stage not restartable or anything else :-)
         } catch ( IllegalStateException | IOException e) {

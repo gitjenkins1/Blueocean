@@ -39,12 +39,7 @@ public class QueueUtil {
     @Nullable
     @SuppressWarnings("unchecked")
     public static <T extends Run> T getRun(@Nonnull Job job, final long queueId) {
-        return Iterables.find((Iterable<T>) job.getBuilds(), new Predicate<Run>() {
-            @Override
-            public boolean apply(@Nullable Run input) {
-                return input != null && input.getQueueId() == queueId;
-            }
-        }, null);
+        return Iterables.find((Iterable<T>) job.getBuilds(), input ->  input != null && input.getQueueId() == queueId);
     }
 
     /**
@@ -63,11 +58,12 @@ public class QueueUtil {
             List<BlueQueueItem> items2 = Lists.newArrayList();
             for (int i = 0; i < items.size(); i++) {
                 Link self = pipeline.getLink().rel("queue").rel(Long.toString(items.get(i).getId()));
-                items2.add(0, new QueueItemImpl(
+                QueueItemImpl queueItem = new QueueItemImpl(
                     organization,
                     items.get(i),
                     pipeline,
-                    (items.size() == 1 ? job.getNextBuildNumber() : job.getNextBuildNumber() + i), self, pipeline.getLink()));
+                    (items.size() == 1 ? job.getNextBuildNumber() : job.getNextBuildNumber() + i), self, pipeline.getLink());
+                items2.add(0, queueItem);
             }
 
             return items2;
